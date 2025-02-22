@@ -111,7 +111,7 @@ export default function SummarizePage() {
           <div>
             <h2 className="text-xl font-semibold mb-3">Overview</h2>
             <div className="p-4 bg-gray-100 rounded">
-              <p>{summary.overview || 'No overview available'}</p>
+              <p>{summary.overview || 'No overview available.'}</p>
             </div>
           </div>
 
@@ -128,9 +128,17 @@ export default function SummarizePage() {
                       {section.summary
                         .split('. ')
                         .filter((sentence) => sentence.trim())
-                        .map((sentence, i) => (
-                          <li key={`${section.title}-${i}`}>{sentence.trim()}</li>
-                        ))}
+                        .map((sentence, i) => {
+                          // Ensure each sentence ends with a full stop
+                          const formattedSentence = sentence.trim().endsWith('.')
+                            ? sentence.trim()
+                            : `${sentence.trim()}.`;
+                          return (
+                            <li key={`${section.title}-${i}`}>
+                              {formattedSentence}
+                            </li>
+                          );
+                        })}
                     </ul>
                   </div>
                 ))}
@@ -138,7 +146,7 @@ export default function SummarizePage() {
             </div>
           ) : (
             <div className="p-4 bg-yellow-100 text-yellow-700 rounded">
-              No key points found in the content
+              No key points found in the content.
             </div>
           )}
         </div>
