@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/client';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { FaBars, FaSignOutAlt } from 'react-icons/fa'; // Import hamburger menu and logout icons
+import Link from 'next/link'; // Import Link for navigation
 
 export default function Header() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -66,7 +67,28 @@ export default function Header() {
       }`}
     >
       {/* Logo */}
-      <h1 className="text-lg md:text-xl font-bold text-indigo-600">Summarizer</h1>
+      <Link href="/">
+        <h1 className="text-lg md:text-xl font-bold text-indigo-600">Summarizer</h1>
+      </Link>
+
+      {/* Navigation Links */}
+      <div className="hidden md:flex items-center gap-6">
+        <Link
+          href="/summarize"
+          className="text-indigo-600 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        >
+          Summarize
+        </Link>
+        {isLoggedIn && (
+          <button
+            onClick={handleLogout}
+            className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm md:text-base flex items-center gap-2"
+          >
+            <FaSignOutAlt className="text-lg" /> {/* Logout Icon */}
+            <span>Logout</span> {/* Logout Text */}
+          </button>
+        )}
+      </div>
 
       {/* Hamburger Menu (Mobile) */}
       <div className="md:hidden">
@@ -75,20 +97,24 @@ export default function Header() {
         </button>
       </div>
 
-      {/* Logout Button (Visible on Desktop and Mobile when Menu is Open) */}
-      {isLoggedIn && (
-        <div
-          className={`${
-            isMenuOpen ? 'block' : 'hidden'
-          } md:block absolute md:static top-16 right-4 bg-white md:bg-transparent shadow-md md:shadow-none rounded-md p-2 md:p-0`}
-        >
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 text-white px-3 py-1 md:px-4 md:py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm md:text-base flex items-center gap-2"
+      {/* Mobile Menu (Visible when Menu is Open) */}
+      {isMenuOpen && (
+        <div className="md:hidden absolute top-16 right-4 bg-white shadow-md rounded-md p-4">
+          <Link
+            href="/summarize"
+            className="block text-indigo-600 hover:text-indigo-700 mb-4"
           >
-            <FaSignOutAlt className="text-lg" /> {/* Logout Icon */}
-            <span>Logout</span> {/* Logout Text */}
-          </button>
+            Summarize
+          </Link>
+          {isLoggedIn && (
+            <button
+              onClick={handleLogout}
+              className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm md:text-base flex items-center gap-2"
+            >
+              <FaSignOutAlt className="text-lg" /> {/* Logout Icon */}
+              <span>Logout</span> {/* Logout Text */}
+            </button>
+          )}
         </div>
       )}
     </header>
