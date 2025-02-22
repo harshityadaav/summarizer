@@ -1,130 +1,209 @@
-import { createClient } from '@/utils/supabase/server'
-import { NextResponse } from 'next/server'
-import axios from 'axios'
-import * as cheerio from 'cheerio'
+import { createClient } from '@/utils/supabase/server';
+import { NextResponse } from 'next/server';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
-// Function to extract and clean content using cheerio
-function extractContent(html: string) {
-  const $ = cheerio.load(html)
-
-  // Remove unwanted elements
-  $('script, style, nav, header, footer, iframe, .advertisement, .sidebar, #sidebar, .menu, .nav').remove()
-
-  // Try to find main content containers
-  const possibleContentSelectors = [
-    'article',
-    '.post-content',
-    '.entry-content',
-    '.article-content',
-    '.blog-post',
-    '.main-content',
-    'main',
-    '#main',
-    '.content',
-    '[role="main"]'
-  ]
-
-  let content = ''
-
-  // Try each selector
-  for (const selector of possibleContentSelectors) {
-    const element = $(selector)
-    if (element.length) {
-      content = element.text()
-      break
-    }
-  }
-
-  // If no content found, get body text as fallback
-  if (!content) {
-    content = $('body').text()
-  }
-
-  // Clean the content
-  return content
-    .replace(/\s+/g, ' ')      // Replace multiple spaces
-    .replace(/\n+/g, ' ')      // Replace newlines
-    .trim()
+interface Section {
+  title: string;
+  summary: string;
 }
 
-// Function to chunk text for API processing
-function chunkText(text: string, maxLength = 4000) {
-  // Split into sentences (rough approximation)
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || []
-  let chunks = []
-  let currentChunk = ''
+interface StructuredSummary {
+  overview: string;
+  sections: Section[];
+}
+
+// Function to chunk text while preserving coherence
+function chunkText(text: string, maxLength = 1000) {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
+  const chunks: string[] = [];
+  let currentChunk = '';
 
   for (const sentence of sentences) {
     if ((currentChunk + sentence).length <= maxLength) {
-      currentChunk += sentence
+      currentChunk += sentence;
     } else {
-      if (currentChunk) chunks.push(currentChunk.trim())
-      currentChunk = sentence
+      if (currentChunk) chunks.push(currentChunk.trim());
+      currentChunk = sentence;
     }
   }
-  if (currentChunk) chunks.push(currentChunk.trim())
+  if (currentChunk) chunks.push(currentChunk.trim());
 
-  return chunks
+  return chunks;
 }
 
-export async function POST(request: Request) {
+// Enhanced content extraction
+function extractStructuredContent(html: string) {
+  const $ = cheerio.load(html);
+
+  // Remove irrelevant elements
+  $('script, style, nav, footer, iframe, .advertisement, .nav, .menu').remove();
+
+  const sections: Section[] = [];
+  let mainContent = '';
+
+  // Find all headings
+  $('h1, h2, h3, h4, h5, h6').each((_, heading) => {
+    const $heading = $(heading);
+    const title = $heading.text().trim();
+
+    // Get content until next heading
+    let content = '';
+    let $next = $heading.next();
+
+    while ($next.length && !$next.is('h1, h2, h3, h4, h5, h6')) {
+      content += ' ' + $next.text().trim();
+      $next = $next.next();
+    }
+
+    if (content.trim()) {
+      sections.push({
+        title,
+        summary: content.trim(),
+      });
+    }
+  });
+
+  // Get main content without headers for fallback
+  $('article, .post-content, .entry-content, .content, main').each((_, element) => {
+    mainContent += $(element).text() + ' ';
+  });
+
+  return {
+    sections,
+    mainContent: mainContent.trim(),
+  };
+}
+
+// Function to summarize a chunk of text into very short points
+async function summarizeChunk(text: string, apiKey: string) {
+  if (!text) {
+    console.error('Summarization error: Text is undefined or empty');
+    return null;
+  }
+
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Truncate text to avoid exceeding token limits
+    const truncatedText = text.split(/\s+/).slice(0, 300).join(' '); // Shorter input (300 words)
 
-    const { url } = await request.json()
-    
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 })
-    }
-
-    // Fetch webpage content
-    const { data: htmlContent } = await axios.get(url)
-    
-    // Extract and clean content
-    const extractedContent = extractContent(htmlContent)
-    
-    // Split content into manageable chunks
-    const chunks = chunkText(extractedContent)
-    
-    // Process first chunk (or full content if small enough)
-    const processChunk = chunks[0]
-
-    // Call Hugging Face API
-    const { data: summaryData } = await axios.post(
+    const { data } = await axios.post(
       "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
       {
-        inputs: processChunk,
+        inputs: truncatedText,
         parameters: {
-          max_length: 250, // Increased for better overview
-          min_length: 100, // Increased for more content
+          max_length: 30, // Very short summary (30 tokens)
+          min_length: 10,
           length_penalty: 2.0,
           num_beams: 4,
-          early_stopping: true
-        }
+          early_stopping: true,
+        },
       },
       {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.HUGGING_FACE_API_KEY}`
-        }
+          "Authorization": `Bearer ${apiKey}`,
+        },
       }
-    )
+    );
 
-    // Extract summary text
-    const summaryText = Array.isArray(summaryData) 
-      ? summaryData[0]?.summary_text 
-      : summaryData.summary_text
+    // Handle model loading error
+    if (data.error && data.error.includes('is currently loading')) {
+      const estimatedTime = data.estimated_time || 10; // Default to 10 seconds
+      console.log(`Model is loading. Retrying in ${estimatedTime} seconds...`);
+      await delay(estimatedTime * 1000); // Wait for the model to load
+      return summarizeChunk(text, apiKey); // Retry
+    }
 
-    if (!summaryText) {
+    return Array.isArray(data) ? data[0]?.summary_text : data.summary_text;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('Summarization error:', error.response?.data || error.message);
+    } else {
+      console.error('Summarization error:', error);
+    }
+    return null;
+  }
+}
+
+// Delay function for rate limiting
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { url } = await request.json();
+
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    // Fetch webpage content
+    const { data: htmlContent } = await axios.get(url);
+
+    // Extract structured content
+    const { sections, mainContent } = extractStructuredContent(htmlContent);
+
+    if (!mainContent && sections.length === 0) {
       return NextResponse.json(
-        { error: 'No summary generated' },
-        { status: 500 }
-      )
+        { error: 'Failed to extract content from the URL' },
+        { status: 400 }
+      );
+    }
+
+    // Generate structured summary
+    const structuredSummary: StructuredSummary = {
+      overview: '',
+      sections: [],
+    };
+
+    // Generate overview from main content
+    const mainChunks = chunkText(mainContent);
+    let overviewSummary = await summarizeChunk(
+      mainChunks[0],
+      process.env.HUGGING_FACE_API_KEY!
+    );
+
+    if (!overviewSummary) {
+      // Retry once
+      await delay(2000);
+      overviewSummary = await summarizeChunk(
+        mainChunks[0],
+        process.env.HUGGING_FACE_API_KEY!
+      );
+    }
+
+    structuredSummary.overview = overviewSummary || 'No overview available';
+
+    // Generate summaries for each section
+    for (const section of sections) {
+      let sectionSummary = await summarizeChunk(
+        section.summary,
+        process.env.HUGGING_FACE_API_KEY!
+      );
+
+      if (!sectionSummary) {
+        // Retry once
+        await delay(2000);
+        sectionSummary = await summarizeChunk(
+          section.summary,
+          process.env.HUGGING_FACE_API_KEY!
+        );
+      }
+
+      if (sectionSummary) {
+        structuredSummary.sections.push({
+          title: section.title,
+          summary: sectionSummary,
+        });
+      }
     }
 
     // Store in Supabase
@@ -133,38 +212,35 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         original_url: url,
-        summary: summaryText,
-        original_content: extractedContent.slice(0, 1000), // Store first 1000 chars of original
-        created_at: new Date().toISOString()
+        summary: JSON.stringify(structuredSummary),
+        created_at: new Date().toISOString(),
       })
       .select()
-      .single()
+      .single();
 
     if (dbError) {
-      console.error('Database error:', dbError)
+      console.error('Database error:', dbError);
       return NextResponse.json(
         { error: 'Failed to save summary' },
         { status: 500 }
-      )
+      );
     }
 
     return NextResponse.json({
-      summary: summaryText,
-      contentLength: extractedContent.length,
-      data
-    })
-
+      summary: structuredSummary,
+      data,
+    });
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error:', error);
     if (axios.isAxiosError(error)) {
       return NextResponse.json(
         { error: `Request failed: ${error.message}` },
         { status: error.response?.status || 500 }
-      )
+      );
     }
     return NextResponse.json(
       { error: 'Failed to generate summary' },
       { status: 500 }
-    )
+    );
   }
 }

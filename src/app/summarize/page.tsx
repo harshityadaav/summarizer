@@ -1,42 +1,41 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import axios from 'axios'
+import { useState } from 'react';
+import axios from 'axios';
+
+interface SectionSummary {
+  title: string;
+  summary: string;
+}
+
+interface StructuredSummary {
+  overview: string;
+  sections: SectionSummary[];
+}
 
 export default function SummarizePage() {
-  const [url, setUrl] = useState('')
-  const [summary, setSummary] = useState('')
-  const [contentLength, setContentLength] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [isClient, setIsClient] = useState(false)
-
-  useEffect(() => {
-    setIsClient(true)
-  }, [])
+  const [url, setUrl] = useState('');
+  const [summary, setSummary] = useState<StructuredSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError('');
     try {
-      const response = await axios.post('/api/summarize', { url })
-      setSummary(response.data.summary)
-      setContentLength(response.data.contentLength)
+      const response = await axios.post('/api/summarize', { url });
+      setSummary(response.data.summary);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data?.error || 'Failed to generate summary')
+        setError(error.response?.data?.error || 'Failed to generate summary');
       } else {
-        setError('An unexpected error occurred')
+        setError('An unexpected error occurred');
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
-
-  if (!isClient) {
-    return null // Render nothing on the server
-  }
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-4">
@@ -76,14 +75,36 @@ export default function SummarizePage() {
       )}
 
       {summary && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-2">Summary</h2>
-          <div className="p-4 bg-gray-100 rounded">
-            <p className="mb-2">{summary}</p>
-            <p className="text-sm text-gray-600">
-              Original content length: {contentLength} characters
-            </p>
+        <div className="mt-8 space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold mb-3">Overview</h2>
+            <div className="p-4 bg-gray-100 rounded">
+              <p>{summary.overview}</p>
+            </div>
           </div>
+
+          {summary.sections.length > 0 && (
+            <div>
+              <h2 className="text-xl font-semibold mb-3">Key Points</h2>
+              <div className="space-y-4">
+                {summary.sections.map((section, index) => (
+                  <div key={index} className="p-4 bg-gray-100 rounded">
+                    <h3 className="font-semibold text-lg mb-2">
+                      {section.title}
+                    </h3>
+                    <ul className="list-disc list-inside">
+                      {section.summary
+                        .split('. ') // Split into bullet points
+                        .filter((sentence) => sentence.trim()) // Remove empty sentences
+                        .map((sentence, i) => (
+                          <li key={i}>{sentence.trim()}</li>
+                        ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
