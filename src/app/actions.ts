@@ -24,21 +24,28 @@ export async function login(formData: FormData) {
   redirect('/')
 }
 
-export async function signup(formData: FormData) {
-  const supabase = await createClient()
+export async function signup(prevState: { message: string }, formData: FormData) {
+  const supabase = await createClient();
 
   const data = {
     email: formData.get('email') as string,
     password: formData.get('password') as string,
+    confirmPassword: formData.get('confirmPassword') as string,
+  };
+
+  if (data.password !== data.confirmPassword) {
+    return { message: 'Passwords do not match' }; 
   }
 
-  const { error } = await supabase.auth.signUp(data)
+  const { error } = await supabase.auth.signUp({
+    email: data.email,
+    password: data.password,
+  });
 
   if (error) {
-    console.error('Signup error:', error.message)
-    redirect('/error')
+    return { message: 'Signup failed: ' + error.message };
   }
 
-  revalidatePath('/', 'layout')
-  redirect('/login')
+  revalidatePath('/', 'layout');
+  redirect('/login');
 }
