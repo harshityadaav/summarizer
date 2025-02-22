@@ -13,8 +13,8 @@ interface StructuredSummary {
   sections: Section[];
 }
 
-// Function to chunk text while preserving coherence
-function chunkText(text: string, maxLength = 1000) {
+// Function to chunk text while preserving sentence boundaries
+function chunkText(text: string, maxLength = 500) { // Reduced maxLength to 500
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
   const chunks: string[] = [];
   let currentChunk = '';
@@ -32,7 +32,7 @@ function chunkText(text: string, maxLength = 1000) {
   return chunks;
 }
 
-// Enhanced content extraction
+// Function to extract structured content from HTML
 function extractStructuredContent(html: string) {
   const $ = cheerio.load(html);
 
@@ -42,12 +42,12 @@ function extractStructuredContent(html: string) {
   const sections: Section[] = [];
   let mainContent = '';
 
-  // Find all headings
+  // Find all headings and their corresponding content
   $('h1, h2, h3, h4, h5, h6').each((_, heading) => {
     const $heading = $(heading);
     const title = $heading.text().trim();
 
-    // Get content until next heading
+    // Get content until the next heading
     let content = '';
     let $next = $heading.next();
 
@@ -64,7 +64,7 @@ function extractStructuredContent(html: string) {
     }
   });
 
-  // Get main content without headers for fallback
+  // Get main content for fallback
   $('article, .post-content, .entry-content, .content, main').each((_, element) => {
     mainContent += $(element).text() + ' ';
   });
@@ -75,7 +75,7 @@ function extractStructuredContent(html: string) {
   };
 }
 
-// Function to summarize a chunk of text into very short points
+// Function to summarize a chunk of text using Hugging Face API
 async function summarizeChunk(text: string, apiKey: string) {
   if (!text) {
     console.error('Summarization error: Text is undefined or empty');
@@ -83,16 +83,16 @@ async function summarizeChunk(text: string, apiKey: string) {
   }
 
   try {
-    // Truncate text to avoid exceeding token limits
-    const truncatedText = text.split(/\s+/).slice(0, 200).join(' '); // Shorter input (200 words)
+    // Truncate text to minimize token usage (first 100 words)
+    const truncatedText = text.split(/\s+/).slice(0, 100).join(' ');
 
     const { data } = await axios.post(
-      "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
+      'https://api-inference.huggingface.co/models/facebook/bart-large-cnn',
       {
         inputs: truncatedText,
         parameters: {
-          max_length: 20, // Very short summary (20 tokens)
-          min_length: 10,
+          max_length: 50, // Reduced max_length to 50 tokens
+          min_length: 20, // Reduced min_length to 20 tokens
           length_penalty: 2.0,
           num_beams: 4,
           early_stopping: true,
@@ -100,13 +100,13 @@ async function summarizeChunk(text: string, apiKey: string) {
       },
       {
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
         },
       }
     );
 
-    // Handle model loading error
+    // Handle model loading errors
     if (data.error && data.error.includes('is currently loading')) {
       const estimatedTime = data.estimated_time || 10; // Default to 10 seconds
       console.log(`Model is loading. Retrying in ${estimatedTime} seconds...`);
@@ -183,8 +183,8 @@ export async function POST(request: Request) {
 
     structuredSummary.overview = overviewSummary || 'No overview available';
 
-    // Generate summaries for each section
-    for (const section of sections) {
+    // Generate summaries for each section (only the first 3 sections to save tokens)
+    for (const section of sections.slice(0, 3)) {
       let sectionSummary = await summarizeChunk(
         section.summary,
         process.env.HUGGING_FACE_API_KEY!

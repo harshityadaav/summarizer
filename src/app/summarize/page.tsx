@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 interface SectionSummary {
@@ -13,11 +13,13 @@ interface StructuredSummary {
   sections: SectionSummary[];
 }
 
-// Type guard
+// Type guard to validate the structure of the summary
 function isStructuredSummary(data: any): data is StructuredSummary {
-  return data && 
-         typeof data.overview === 'string' && 
-         Array.isArray(data.sections);
+  return (
+    data &&
+    typeof data.overview === 'string' &&
+    Array.isArray(data.sections)
+  );
 }
 
 export default function SummarizePage() {
@@ -25,6 +27,12 @@ export default function SummarizePage() {
   const [summary, setSummary] = useState<StructuredSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isClient, setIsClient] = useState(false);
+
+  // Ensure this component only renders on the client side
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,9 +49,11 @@ export default function SummarizePage() {
       }
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data?.error || 
-                error.message || 
-                'Failed to generate summary');
+        setError(
+          error.response?.data?.error ||
+          error.message ||
+          'Failed to generate summary'
+        );
       } else if (error instanceof Error) {
         setError(error.message);
       } else {
@@ -54,10 +64,14 @@ export default function SummarizePage() {
     }
   };
 
+  if (!isClient) {
+    return <p>Loading...</p>; // Render a fallback on the server
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Blog Summarizer</h1>
-      
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="url" className="block text-sm font-medium mb-2">
@@ -73,7 +87,7 @@ export default function SummarizePage() {
             placeholder="https://example.com/blog-post"
           />
         </div>
-        
+
         <button
           type="submit"
           disabled={loading}
@@ -105,7 +119,7 @@ export default function SummarizePage() {
             <div>
               <h2 className="text-xl font-semibold mb-3">Key Points</h2>
               <div className="space-y-4">
-                {summary.sections.map((section, index) => (
+                {summary.sections.slice(0, 3).map((section, index) => ( // Only show the first 3 sections
                   <div key={section.title} className="p-4 bg-gray-100 rounded">
                     <h3 className="font-semibold text-lg mb-2">
                       {section.title}
@@ -114,7 +128,6 @@ export default function SummarizePage() {
                       {section.summary
                         .split('. ')
                         .filter((sentence) => sentence.trim())
-                        .slice(0, 3)
                         .map((sentence, i) => (
                           <li key={`${section.title}-${i}`}>{sentence.trim()}</li>
                         ))}
