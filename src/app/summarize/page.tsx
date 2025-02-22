@@ -13,6 +13,13 @@ interface StructuredSummary {
   sections: SectionSummary[];
 }
 
+// Type guard
+function isStructuredSummary(data: any): data is StructuredSummary {
+  return data && 
+         typeof data.overview === 'string' && 
+         Array.isArray(data.sections);
+}
+
 export default function SummarizePage() {
   const [url, setUrl] = useState('');
   const [summary, setSummary] = useState<StructuredSummary | null>(null);
@@ -24,11 +31,21 @@ export default function SummarizePage() {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.post('/api/summarize', { url });
-      setSummary(response.data.summary);
+      const response = await axios.post<{ summary?: StructuredSummary }>('/api/summarize', { url });
+      const responseData = response.data;
+
+      if (isStructuredSummary(responseData?.summary)) {
+        setSummary(responseData.summary);
+      } else {
+        setError('Invalid summary format received from server');
+      }
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data?.error || 'Failed to generate summary');
+        setError(error.response?.data?.error || 
+                error.message || 
+                'Failed to generate summary');
+      } else if (error instanceof Error) {
+        setError(error.message);
       } else {
         setError('An unexpected error occurred');
       }
@@ -60,6 +77,7 @@ export default function SummarizePage() {
         <button
           type="submit"
           disabled={loading}
+          aria-disabled={loading}
           className={`px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${
             loading ? 'opacity-50 cursor-not-allowed' : ''
           }`}
@@ -79,30 +97,35 @@ export default function SummarizePage() {
           <div>
             <h2 className="text-xl font-semibold mb-3">Overview</h2>
             <div className="p-4 bg-gray-100 rounded">
-              <p>{summary.overview}</p>
+              <p>{summary.overview || 'No overview available'}</p>
             </div>
           </div>
 
-          {summary.sections.length > 0 && (
+          {summary.sections?.length > 0 ? (
             <div>
               <h2 className="text-xl font-semibold mb-3">Key Points</h2>
               <div className="space-y-4">
                 {summary.sections.map((section, index) => (
-                  <div key={index} className="p-4 bg-gray-100 rounded">
+                  <div key={section.title} className="p-4 bg-gray-100 rounded">
                     <h3 className="font-semibold text-lg mb-2">
                       {section.title}
                     </h3>
                     <ul className="list-disc list-inside">
                       {section.summary
-                        .split('. ') // Split into bullet points
-                        .filter((sentence) => sentence.trim()) // Remove empty sentences
+                        .split('. ')
+                        .filter((sentence) => sentence.trim())
+                        .slice(0, 3)
                         .map((sentence, i) => (
-                          <li key={i}>{sentence.trim()}</li>
+                          <li key={`${section.title}-${i}`}>{sentence.trim()}</li>
                         ))}
                     </ul>
                   </div>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-yellow-100 text-yellow-700 rounded">
+              No key points found in the content
             </div>
           )}
         </div>

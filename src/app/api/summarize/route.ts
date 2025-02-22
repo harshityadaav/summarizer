@@ -84,14 +84,14 @@ async function summarizeChunk(text: string, apiKey: string) {
 
   try {
     // Truncate text to avoid exceeding token limits
-    const truncatedText = text.split(/\s+/).slice(0, 300).join(' '); // Shorter input (300 words)
+    const truncatedText = text.split(/\s+/).slice(0, 200).join(' '); // Shorter input (200 words)
 
     const { data } = await axios.post(
       "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
       {
         inputs: truncatedText,
         parameters: {
-          max_length: 30, // Very short summary (30 tokens)
+          max_length: 20, // Very short summary (20 tokens)
           min_length: 10,
           length_penalty: 2.0,
           num_beams: 4,
@@ -164,10 +164,11 @@ export async function POST(request: Request) {
       sections: [],
     };
 
-    // Generate overview from main content
-    const mainChunks = chunkText(mainContent);
+    // Generate overview from main content or first section
+    const overviewText = mainContent || sections[0]?.summary || '';
+    const overviewChunks = chunkText(overviewText);
     let overviewSummary = await summarizeChunk(
-      mainChunks[0],
+      overviewChunks[0],
       process.env.HUGGING_FACE_API_KEY!
     );
 
@@ -175,7 +176,7 @@ export async function POST(request: Request) {
       // Retry once
       await delay(2000);
       overviewSummary = await summarizeChunk(
-        mainChunks[0],
+        overviewChunks[0],
         process.env.HUGGING_FACE_API_KEY!
       );
     }
