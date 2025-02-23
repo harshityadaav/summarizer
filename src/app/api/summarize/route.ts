@@ -14,7 +14,7 @@ interface StructuredSummary {
 }
 
 // Function to chunk text while preserving sentence boundaries
-function chunkText(text: string, maxLength = 500) { // Reduced maxLength to 500
+function chunkText(text: string, maxLength = 500) {
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
   const chunks: string[] = [];
   let currentChunk = '';
@@ -91,8 +91,8 @@ async function summarizeChunk(text: string, apiKey: string) {
       {
         inputs: truncatedText,
         parameters: {
-          max_length: 50, // Reduced max_length to 50 tokens
-          min_length: 20, // Reduced min_length to 20 tokens
+          max_length: 50,
+          min_length: 20,
           length_penalty: 2.0,
           num_beams: 4,
           early_stopping: true,
@@ -108,10 +108,10 @@ async function summarizeChunk(text: string, apiKey: string) {
 
     // Handle model loading errors
     if (data.error && data.error.includes('is currently loading')) {
-      const estimatedTime = data.estimated_time || 10; // Default to 10 seconds
+      const estimatedTime = data.estimated_time || 10;
       console.log(`Model is loading. Retrying in ${estimatedTime} seconds...`);
-      await delay(estimatedTime * 1000); // Wait for the model to load
-      return summarizeChunk(text, apiKey); // Retry
+      await delay(estimatedTime * 1000);
+      return summarizeChunk(text, apiKey);
     }
 
     return Array.isArray(data) ? data[0]?.summary_text : data.summary_text;

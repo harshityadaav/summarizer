@@ -119,7 +119,7 @@ export default function SummarizePage() {
             <div>
               <h2 className="text-xl font-semibold mb-3">Key Points</h2>
               <div className="space-y-4">
-                {summary.sections.slice(0, 3).map((section, index) => ( // Only show the first 3 sections
+                {summary.sections.slice(0, 3).map((section, index) => (
                   <div key={section.title} className="p-4 bg-gray-100 rounded">
                     <h3 className="font-semibold text-lg mb-2">
                       {section.title}
@@ -129,7 +129,6 @@ export default function SummarizePage() {
                         .split('. ')
                         .filter((sentence) => sentence.trim())
                         .map((sentence, i) => {
-                          // Ensure each sentence ends with a full stop
                           const formattedSentence = sentence.trim().endsWith('.')
                             ? sentence.trim()
                             : `${sentence.trim()}.`;
