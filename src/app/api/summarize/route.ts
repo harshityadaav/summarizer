@@ -10,11 +10,11 @@ interface Section {
 
 interface StructuredSummary {
   overview: string;
-  sections: Section[];
+  keyPoints: string[];
 }
 
 // Function to chunk text while preserving sentence boundaries
-function chunkText(text: string, maxLength = 500) {
+function chunkText(text: string, maxLength = 500): string[] {
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
   const chunks: string[] = [];
   let currentChunk = '';
@@ -33,7 +33,7 @@ function chunkText(text: string, maxLength = 500) {
 }
 
 // Function to extract structured content from HTML
-function extractStructuredContent(html: string) {
+function extractStructuredContent(html: string): { sections: Section[]; mainContent: string } {
   const $ = cheerio.load(html);
 
   // Remove irrelevant elements
@@ -76,7 +76,7 @@ function extractStructuredContent(html: string) {
 }
 
 // Function to summarize a chunk of text using Hugging Face API
-async function summarizeChunk(text: string, apiKey: string) {
+async function summarizeChunk(text: string, apiKey: string, isOverview = false): Promise<string | null> {
   if (!text) {
     console.error('Summarization error: Text is undefined or empty');
     return null;
@@ -91,8 +91,8 @@ async function summarizeChunk(text: string, apiKey: string) {
       {
         inputs: truncatedText,
         parameters: {
-          max_length: 50,
-          min_length: 20,
+          max_length: isOverview ? 30 : 50, // Shorter overview, longer key points
+          min_length: isOverview ? 10 : 20,
           length_penalty: 2.0,
           num_beams: 4,
           early_stopping: true,
@@ -109,9 +109,8 @@ async function summarizeChunk(text: string, apiKey: string) {
     // Handle model loading errors
     if (data.error && data.error.includes('is currently loading')) {
       const estimatedTime = data.estimated_time || 10;
-      console.log(`Model is loading. Retrying in ${estimatedTime} seconds...`);
       await delay(estimatedTime * 1000);
-      return summarizeChunk(text, apiKey);
+      return summarizeChunk(text, apiKey, isOverview);
     }
 
     return Array.isArray(data) ? data[0]?.summary_text : data.summary_text;
@@ -125,8 +124,14 @@ async function summarizeChunk(text: string, apiKey: string) {
   }
 }
 
+// Function to filter out overlapping sentences
+function filterOverlappingContent(overview: string, keyPoints: string[]): string[] {
+  const overviewSentences = new Set(overview.split('. ').map(s => s.trim()));
+  return keyPoints.filter(point => !overviewSentences.has(point.trim()));
+}
+
 // Delay function for rate limiting
-function delay(ms: number) {
+function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -161,7 +166,7 @@ export async function POST(request: Request) {
     // Generate structured summary
     const structuredSummary: StructuredSummary = {
       overview: '',
-      sections: [],
+      keyPoints: [],
     };
 
     // Generate overview from main content or first section
@@ -169,7 +174,8 @@ export async function POST(request: Request) {
     const overviewChunks = chunkText(overviewText);
     let overviewSummary = await summarizeChunk(
       overviewChunks[0],
-      process.env.HUGGING_FACE_API_KEY!
+      process.env.HUGGING_FACE_API_KEY!,
+      true // Mark as overview
     );
 
     if (!overviewSummary) {
@@ -177,7 +183,8 @@ export async function POST(request: Request) {
       await delay(2000);
       overviewSummary = await summarizeChunk(
         overviewChunks[0],
-        process.env.HUGGING_FACE_API_KEY!
+        process.env.HUGGING_FACE_API_KEY!,
+        true
       );
     }
 
@@ -200,12 +207,16 @@ export async function POST(request: Request) {
       }
 
       if (sectionSummary) {
-        structuredSummary.sections.push({
-          title: section.title,
-          summary: sectionSummary,
-        });
+        structuredSummary.keyPoints.push(sectionSummary);
       }
     }
+
+    // Filter out overlapping content between overview and key points
+    structuredSummary.keyPoints = filterOverlappingContent(
+      structuredSummary.overview,
+      structuredSummary.keyPoints
+    );
+
 
     // Store in Supabase
     const { data, error: dbError } = await supabase

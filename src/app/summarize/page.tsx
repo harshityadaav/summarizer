@@ -3,28 +3,16 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-interface SectionSummary {
-  title: string;
-  summary: string;
-}
-
-interface StructuredSummary {
-  overview: string;
-  sections: SectionSummary[];
-}
-
-// Type guard to validate the structure of the summary
-function isStructuredSummary(data: any): data is StructuredSummary {
-  return (
-    data &&
-    typeof data.overview === 'string' &&
-    Array.isArray(data.sections)
-  );
+interface SummaryResponse {
+  summary: {
+    overview: string;
+    keyPoints: string[];
+  };
 }
 
 export default function SummarizePage() {
   const [url, setUrl] = useState('');
-  const [summary, setSummary] = useState<StructuredSummary | null>(null);
+  const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isClient, setIsClient] = useState(false);
@@ -39,14 +27,9 @@ export default function SummarizePage() {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.post<{ summary?: StructuredSummary }>('/api/summarize', { url });
-      const responseData = response.data;
-
-      if (isStructuredSummary(responseData?.summary)) {
-        setSummary(responseData.summary);
-      } else {
-        setError('Invalid summary format received from server');
-      }
+      const response = await axios.post<SummaryResponse>('/api/summarize', { url });
+      console.log('API Response:', response.data); // Log the response for debugging
+      setSummary(response.data);
     } catch (error) {
       if (axios.isAxiosError(error)) {
         setError(
@@ -106,41 +89,26 @@ export default function SummarizePage() {
         </div>
       )}
 
-      {summary && (
+      {summary && summary.summary && (
         <div className="mt-8 space-y-6">
           <div>
             <h2 className="text-xl font-semibold mb-3">Overview</h2>
             <div className="p-4 bg-gray-100 rounded">
-              <p>{summary.overview || 'No overview available.'}</p>
+              <p>{summary.summary.overview || 'No overview available.'}</p>
             </div>
           </div>
 
-          {summary.sections?.length > 0 ? (
+          {summary.summary.keyPoints?.length > 0 ? (
             <div>
               <h2 className="text-xl font-semibold mb-3">Key Points</h2>
               <div className="space-y-4">
-                {summary.sections.slice(0, 3).map((section, index) => (
-                  <div key={section.title} className="p-4 bg-gray-100 rounded">
-                    <h3 className="font-semibold text-lg mb-2">
-                      {section.title}
-                    </h3>
-                    <ul className="list-disc list-inside">
-                      {section.summary
-                        .split('. ')
-                        .filter((sentence) => sentence.trim())
-                        .map((sentence, i) => {
-                          const formattedSentence = sentence.trim().endsWith('.')
-                            ? sentence.trim()
-                            : `${sentence.trim()}.`;
-                          return (
-                            <li key={`${section.title}-${i}`}>
-                              {formattedSentence}
-                            </li>
-                          );
-                        })}
-                    </ul>
-                  </div>
-                ))}
+                <ul className="list-disc list-inside">
+                  {summary.summary.keyPoints.map((point, index) => (
+                    <li key={index} className="p-4 bg-gray-100 rounded">
+                      {point}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           ) : (
